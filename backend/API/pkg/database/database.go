@@ -2,15 +2,18 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"smart_modellism/pkg/config"
+	"smart_modellism/pkg/utils"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type QueryFunc func(DB *mongo.Client) (*mongo.Cursor, error)
+type QueryFunc func(DB *mongo.Client) (interface{}, error)
 
 func Connect(uri string) *mongo.Client {
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
@@ -43,7 +46,7 @@ func Close(client *mongo.Client) {
 	}
 }
 
-func ExecuteQuery(query QueryFunc) (*mongo.Cursor, error) {
+func ExecuteQuery(query QueryFunc) (interface{}, error) {
 	dbConnString, err := config.GetEnv("DATABASE_CONNECTION_STRING")
 
 	if err != nil {
@@ -55,4 +58,21 @@ func ExecuteQuery(query QueryFunc) (*mongo.Cursor, error) {
 
 	return query(DB)
 
+}
+
+func HandleFindOneError(err error, id string, ctx *gin.Context) error {
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			customError := fmt.Errorf("no document exists with this id: %s", id)
+
+			utils.ErrorJSON(customError, ctx, 404)
+
+		} else {
+			utils.ErrorJSON(err, ctx, 500)
+		}
+
+		return err
+	}
+
+	return nil
 }

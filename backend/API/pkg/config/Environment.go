@@ -1,9 +1,11 @@
 package config
 
-import "github.com/spf13/viper"
+import (
+	"github.com/spf13/viper"
+)
 
 func GetEnv(key string) (string, error) {
-	viper.SetConfigFile("./../.env")
+	viper.SetConfigFile(".env")
 
 	err := viper.ReadInConfig()
 
