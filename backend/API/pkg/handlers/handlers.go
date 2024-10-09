@@ -18,35 +18,25 @@ import (
 )
 
 func GetModels(ctx *gin.Context) {
+	result := database.ReadAll(ctx, "models", "documents")
 
-	res, err := database.ExecuteQuery(
-		func(DB *mongo.Client) (interface{}, error) {
-			return DB.Database("admin").Collection("cars_models").Find(
-				context.TODO(),
-				bson.D{},
-			)
-		},
-	)
-
-	if err != nil {
-		panic(err)
+	if result == nil {
+		return
 	}
 
-	if result, ok := res.(*mongo.Cursor); ok {
-		var docs models.Models
+	var docs models.ModelsDocuments
 
-		if err := result.All(ctx, &docs); err != nil {
-			utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+	if err := result.All(ctx, &docs); err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
 
-			return
-		}
-
-		var responseJSON utils.SuccessResponse
-		responseJSON.Status = "Success"
-		responseJSON.Data = docs
-
-		ctx.JSON(http.StatusOK, responseJSON)
+		return
 	}
+
+	var responseJSON utils.SuccessResponse
+	responseJSON.Status = "Success"
+	responseJSON.Data = docs
+
+	ctx.JSON(http.StatusOK, responseJSON)
 
 }
 
@@ -67,22 +57,15 @@ func GetModelById(ctx *gin.Context) {
 		return
 	}
 
-	res, _ := database.ExecuteQuery(
-		func(DB *mongo.Client) (interface{}, error) {
-			return DB.Database("admin").Collection("cars_models").FindOne(context.Background(), bson.M{
-				"_id": mongoId,
-			}), nil
-		},
-	)
+	filter := bson.M{
+		"_id": mongoId,
+	}
 
-	result, ok := res.(*mongo.SingleResult)
+	result := database.ReadOne(ctx, filter, "models", "documents")
+
 	var document models.Model
 
-	if ok {
-		if err := result.Decode(&document); err != nil {
-			return
-		}
-
+	if ok := database.DecodeSingleResult(ctx, result, &document); ok {
 		var responseJSON utils.SuccessResponse
 
 		responseJSON.Status = "Success"
@@ -90,10 +73,12 @@ func GetModelById(ctx *gin.Context) {
 
 		ctx.JSON(http.StatusOK, responseJSON)
 	}
+
 }
 
 func InsertModel(ctx *gin.Context) {
 	var resource models.NewModel
+	const dbName, collectionName = "models", "documents"
 
 	body, err := io.ReadAll(ctx.Request.Body)
 
@@ -114,42 +99,79 @@ func InsertModel(ctx *gin.Context) {
 	resource.CreatedAt = time.Now()
 	resource.UpdatedAt = time.Now()
 
-	res, err := database.ExecuteQuery(
-		func(DB *mongo.Client) (interface{}, error) {
-			return DB.Database("admin").Collection("cars_models").InsertOne(context.Background(), resource)
-		},
-	)
+	res := database.Create(ctx, resource, dbName, collectionName)
 
-	if err != nil {
-		utils.ErrorJSON(err, ctx, 500)
+	if res == nil {
+		return
+	}
+
+	newDocId := res.InsertedID
+
+	filter := bson.M{"_id": newDocId}
+	var document models.Model
+
+	result := database.ReadOne(ctx, filter, dbName, collectionName)
+
+	if ok := database.DecodeSingleResult(ctx, result, &document); ok {
+		var responseJSON utils.SuccessResponse
+
+		responseJSON.Status = "Success"
+		responseJSON.Data = document
+
+		ctx.JSON(http.StatusCreated, responseJSON)
+	}
+}
+
+func DeleteModel(ctx *gin.Context) {
+	id, exists := ctx.Params.Get("id")
+
+	if !exists {
+		utils.ErrorJSON(errors.New("invalid request: missing param id"), ctx, http.StatusBadRequest)
 
 		return
 	}
 
-	if result, ok := res.(*mongo.InsertOneResult); ok {
-		newDocId, _ := result.InsertedID.(primitive.ObjectID)
+	res, err := database.ExecuteQuery(
+		func(DB *mongo.Client) (interface{}, error) {
 
-		res, _ := database.ExecuteQuery(
-			func(DB *mongo.Client) (interface{}, error) {
-				return DB.Database("admin").Collection("cars_models").FindOne(context.Background(), bson.M{"_id": newDocId}), nil
-			},
-		)
+			objectID, err := primitive.ObjectIDFromHex(id)
 
-		if res, ok := res.(*mongo.SingleResult); ok {
-			var document models.Model
-
-			if err := res.Decode(&document); err != nil {
-				return
+			if err != nil {
+				return nil, err
 			}
 
-			var responseJSON utils.SuccessResponse
+			return DB.Database("admin").Collection("cars_models").DeleteOne(context.Background(), bson.M{"_id": objectID})
+		},
+	)
 
-			responseJSON.Status = "Success"
-			responseJSON.Data = document
+	if err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
 
-			ctx.JSON(http.StatusCreated, responseJSON)
+		return
+	}
 
+	if deleteResult, ok := res.(*mongo.DeleteResult); ok {
+		itemsDeleted := deleteResult.DeletedCount
+
+		var responseJSON utils.SuccessResponse
+
+		type deleteDataResponse struct {
+			Count     int64  `json:"deletedElements"`
+			DeletedId string `json:"deletedElementId"`
 		}
 
+		dataResponse := deleteDataResponse{
+			Count:     itemsDeleted,
+			DeletedId: id,
+		}
+
+		responseJSON.Status = "Success"
+		responseJSON.Data = dataResponse
+
+		ctx.JSON(http.StatusAccepted, responseJSON)
+
+		return
 	}
+
+	utils.ErrorJSON(errors.New("the document has been deleted but something goes wrong generating a response"), ctx, http.StatusInternalServerError)
 }

@@ -32,6 +32,11 @@ func (r *RoutesV1) Get() router.Routes {
 		Middleware: []gin.HandlerFunc{
 			middleware.ValidateCreateModel(),
 		},
+	}, {
+		Path:       "/api/v1/models/delete/:id",
+		Method:     "DELETE",
+		Handler:    handlers.DeleteModel,
+		Middleware: []gin.HandlerFunc{},
 	},
 	}
 

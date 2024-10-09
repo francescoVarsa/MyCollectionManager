@@ -51,4 +51,4 @@ type Model struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-type Models []Model
+type ModelsDocuments []Model

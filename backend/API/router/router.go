@@ -51,11 +51,11 @@ func (r *Router) registerRoutes() {
 		case "POST":
 			r.engine.POST(route.Path, implementHandler(route)...)
 		case "PUT":
-			r.engine.POST(route.Path, implementHandler(route)...)
+			r.engine.PUT(route.Path, implementHandler(route)...)
 		case "PATCH":
-			r.engine.POST(route.Path, implementHandler(route)...)
+			r.engine.PATCH(route.Path, implementHandler(route)...)
 		case "DELETE":
-			r.engine.POST(route.Path, implementHandler(route)...)
+			r.engine.DELETE(route.Path, implementHandler(route)...)
 		}
 	}
 }
