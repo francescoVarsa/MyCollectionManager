@@ -15,7 +15,7 @@ import (
 const dbQueryExecutionMaxTime = time.Millisecond * 80
 
 func Create(
-	ctx *gin.Context, resource interface{}, dbName string, dbCollection string) *mongo.InsertOneResult {
+	ctx *gin.Context, resource interface{}, dbName string, dbCollection string) (*mongo.InsertOneResult, bool) {
 	res, err := ExecuteQuery(
 		func(DB *mongo.Client) (interface{}, error) {
 			return DB.Database(dbName).Collection(dbCollection).InsertOne(context.Background(), resource)
@@ -25,20 +25,20 @@ func Create(
 	if err != nil {
 		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
 
-		return nil
+		return nil, false
 	}
 
 	if res, ok := res.(*mongo.InsertOneResult); ok {
-		return res
+		return res, true
 	}
 
 	handleUnexpectedMongoType(ctx)
 
-	return nil
+	return nil, false
 }
 
 func Read(
-	ctx *gin.Context, filter interface{}, dbName string, dbCollection string) *mongo.Cursor {
+	ctx *gin.Context, filter interface{}, dbName string, dbCollection string) (*mongo.Cursor, bool) {
 
 	res, err := ExecuteQuery(
 		func(DB *mongo.Client) (interface{}, error) {
@@ -55,23 +55,23 @@ func Read(
 	if err != nil {
 		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
 
-		return nil
+		return nil, false
 	}
 
 	if result, ok := res.(*mongo.Cursor); ok {
-		return result
+		return result, true
 	}
 
 	handleUnexpectedMongoType(ctx)
 
-	return nil
+	return nil, false
 }
 
-func ReadAll(ctx *gin.Context, dbName string, dbCollection string) *mongo.Cursor {
+func ReadAll(ctx *gin.Context, dbName string, dbCollection string) (*mongo.Cursor, bool) {
 	return Read(ctx, bson.D{}, dbName, dbCollection)
 }
 
-func ReadOne(ctx *gin.Context, filter interface{}, dbName string, dbCollection string) *mongo.SingleResult {
+func ReadOne(ctx *gin.Context, filter interface{}, dbName string, dbCollection string) (*mongo.SingleResult, bool) {
 	res, _ := ExecuteQuery(
 		func(DB *mongo.Client) (interface{}, error) {
 			return DB.Database(dbName).Collection(dbCollection).FindOne(context.Background(), filter), nil
@@ -81,13 +81,13 @@ func ReadOne(ctx *gin.Context, filter interface{}, dbName string, dbCollection s
 	result, ok := res.(*mongo.SingleResult)
 
 	if ok {
-		return result
+		return result, true
 
 	}
 
 	handleUnexpectedMongoType(ctx)
 
-	return nil
+	return nil, false
 }
 
 func Update(
@@ -95,7 +95,26 @@ func Update(
 }
 
 func Delete(
-	ctx *gin.Context, filter interface{}, dbName string, dbCollection string) {
+	ctx *gin.Context, filter interface{}, dbName string, dbCollection string) (*mongo.DeleteResult, bool) {
+	res, err := ExecuteQuery(
+		func(DB *mongo.Client) (interface{}, error) {
+			return DB.Database(dbName).Collection(dbCollection).DeleteOne(context.Background(), filter)
+		},
+	)
+
+	if err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+
+		return nil, false
+	}
+
+	if result, ok := res.(*mongo.DeleteResult); ok {
+		return result, true
+	}
+
+	handleUnexpectedMongoType(ctx)
+
+	return nil, false
 }
 
 func handleUnexpectedMongoType(ctx *gin.Context) {

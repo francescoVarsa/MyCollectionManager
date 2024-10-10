@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,13 +13,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func GetModels(ctx *gin.Context) {
-	result := database.ReadAll(ctx, "models", "documents")
+	result, ok := database.ReadAll(ctx, "models", "documents")
 
-	if result == nil {
+	if !ok {
 		return
 	}
 
@@ -61,7 +59,11 @@ func GetModelById(ctx *gin.Context) {
 		"_id": mongoId,
 	}
 
-	result := database.ReadOne(ctx, filter, "models", "documents")
+	result, ok := database.ReadOne(ctx, filter, "models", "documents")
+
+	if !ok {
+		return
+	}
 
 	var document models.Model
 
@@ -99,9 +101,9 @@ func InsertModel(ctx *gin.Context) {
 	resource.CreatedAt = time.Now()
 	resource.UpdatedAt = time.Now()
 
-	res := database.Create(ctx, resource, dbName, collectionName)
+	res, ok := database.Create(ctx, resource, dbName, collectionName)
 
-	if res == nil {
+	if !ok {
 		return
 	}
 
@@ -110,7 +112,11 @@ func InsertModel(ctx *gin.Context) {
 	filter := bson.M{"_id": newDocId}
 	var document models.Model
 
-	result := database.ReadOne(ctx, filter, dbName, collectionName)
+	result, ok := database.ReadOne(ctx, filter, dbName, collectionName)
+
+	if !ok {
+		return
+	}
 
 	if ok := database.DecodeSingleResult(ctx, result, &document); ok {
 		var responseJSON utils.SuccessResponse
@@ -123,6 +129,7 @@ func InsertModel(ctx *gin.Context) {
 }
 
 func DeleteModel(ctx *gin.Context) {
+	const dbName, collectionName = "models", "documents"
 	id, exists := ctx.Params.Get("id")
 
 	if !exists {
@@ -131,18 +138,7 @@ func DeleteModel(ctx *gin.Context) {
 		return
 	}
 
-	res, err := database.ExecuteQuery(
-		func(DB *mongo.Client) (interface{}, error) {
-
-			objectID, err := primitive.ObjectIDFromHex(id)
-
-			if err != nil {
-				return nil, err
-			}
-
-			return DB.Database("admin").Collection("cars_models").DeleteOne(context.Background(), bson.M{"_id": objectID})
-		},
-	)
+	objectID, err := primitive.ObjectIDFromHex(id)
 
 	if err != nil {
 		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
@@ -150,28 +146,30 @@ func DeleteModel(ctx *gin.Context) {
 		return
 	}
 
-	if deleteResult, ok := res.(*mongo.DeleteResult); ok {
-		itemsDeleted := deleteResult.DeletedCount
+	filter := bson.M{"_id": objectID}
 
-		var responseJSON utils.SuccessResponse
+	deleteResult, ok := database.Delete(ctx, filter, dbName, collectionName)
 
-		type deleteDataResponse struct {
-			Count     int64  `json:"deletedElements"`
-			DeletedId string `json:"deletedElementId"`
-		}
-
-		dataResponse := deleteDataResponse{
-			Count:     itemsDeleted,
-			DeletedId: id,
-		}
-
-		responseJSON.Status = "Success"
-		responseJSON.Data = dataResponse
-
-		ctx.JSON(http.StatusAccepted, responseJSON)
-
+	if !ok {
 		return
 	}
 
-	utils.ErrorJSON(errors.New("the document has been deleted but something goes wrong generating a response"), ctx, http.StatusInternalServerError)
+	itemsDeleted := deleteResult.DeletedCount
+
+	var responseJSON utils.SuccessResponse
+
+	type deleteDataResponse struct {
+		Count     int64  `json:"deletedElements"`
+		DeletedId string `json:"deletedElementId"`
+	}
+
+	dataResponse := deleteDataResponse{
+		Count:     itemsDeleted,
+		DeletedId: id,
+	}
+
+	responseJSON.Status = "Success"
+	responseJSON.Data = dataResponse
+
+	ctx.JSON(http.StatusAccepted, responseJSON)
 }
