@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"smart_modellism/pkg/models"
 	"smart_modellism/pkg/utils"
 	"time"
 
@@ -74,7 +75,10 @@ func ReadAll(ctx *gin.Context, dbName string, dbCollection string) (*mongo.Curso
 func ReadOne(ctx *gin.Context, filter interface{}, dbName string, dbCollection string) (*mongo.SingleResult, bool) {
 	res, _ := ExecuteQuery(
 		func(DB *mongo.Client) (interface{}, error) {
-			return DB.Database(dbName).Collection(dbCollection).FindOne(context.Background(), filter), nil
+			context, cancel := context.WithTimeout(context.Background(), time.Duration(dbQueryExecutionMaxTime))
+			defer cancel()
+
+			return DB.Database(dbName).Collection(dbCollection).FindOne(context, filter), nil
 		},
 	)
 
@@ -91,14 +95,64 @@ func ReadOne(ctx *gin.Context, filter interface{}, dbName string, dbCollection s
 }
 
 func Update(
-	ctx *gin.Context, filter interface{}, dbName string, dbCollection string) {
+	ctx *gin.Context, filter interface{}, update interface{}, dbName string, dbCollection string) (*mongo.UpdateResult, bool) {
+
+	res, err := ExecuteQuery(func(DB *mongo.Client) (interface{}, error) {
+		context, cancel := context.WithTimeout(context.Background(), time.Duration(dbQueryExecutionMaxTime))
+		defer cancel()
+
+		updateMap := bson.M{"$set": update}
+
+		return DB.Database(dbName).Collection(dbCollection).UpdateOne(context, filter, updateMap)
+	})
+
+	if err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+	}
+
+	if res, ok := res.(*mongo.UpdateResult); ok {
+		return res, true
+	}
+
+	handleUnexpectedMongoType(ctx)
+
+	return nil, false
+}
+
+func Replace(ctx *gin.Context, resource models.Model, dbName string, dbCollection string) (*mongo.UpdateResult, bool) {
+
+	res, err := ExecuteQuery(func(DB *mongo.Client) (interface{}, error) {
+		context, cancel := context.WithTimeout(context.Background(), time.Duration(dbQueryExecutionMaxTime))
+		defer cancel()
+
+		id := resource.Id
+
+		filter := bson.M{"_id": id}
+
+		return DB.Database(dbName).Collection(dbCollection).ReplaceOne(context, filter, resource)
+	})
+
+	if err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+	}
+
+	if res, ok := res.(*mongo.UpdateResult); ok {
+		return res, true
+	}
+
+	handleUnexpectedMongoType(ctx)
+
+	return nil, false
 }
 
 func Delete(
 	ctx *gin.Context, filter interface{}, dbName string, dbCollection string) (*mongo.DeleteResult, bool) {
 	res, err := ExecuteQuery(
 		func(DB *mongo.Client) (interface{}, error) {
-			return DB.Database(dbName).Collection(dbCollection).DeleteOne(context.Background(), filter)
+			context, cancel := context.WithTimeout(context.Background(), time.Duration(dbQueryExecutionMaxTime))
+			defer cancel()
+
+			return DB.Database(dbName).Collection(dbCollection).DeleteOne(context, filter)
 		},
 	)
 

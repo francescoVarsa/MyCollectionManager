@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"smart_modellism/pkg/database"
 	"smart_modellism/pkg/models"
@@ -39,11 +37,9 @@ func GetModels(ctx *gin.Context) {
 }
 
 func GetModelById(ctx *gin.Context) {
-	id, exists := ctx.Params.Get("id")
+	id, ok := getIdParam(ctx)
 
-	if !exists {
-		utils.ErrorJSON(errors.New("invalid request: missing param id"), ctx, http.StatusBadRequest)
-
+	if !ok {
 		return
 	}
 
@@ -82,15 +78,13 @@ func InsertModel(ctx *gin.Context) {
 	var resource models.NewModel
 	const dbName, collectionName = "models", "documents"
 
-	body, err := io.ReadAll(ctx.Request.Body)
+	err := decodeRequestBody(ctx, &resource)
 
 	if err != nil {
 		utils.ErrorJSON(err, ctx, 500)
 
 		return
 	}
-
-	err = json.Unmarshal(body, &resource)
 
 	if err != nil {
 		utils.ErrorJSON(err, ctx, 500)
@@ -130,11 +124,10 @@ func InsertModel(ctx *gin.Context) {
 
 func DeleteModel(ctx *gin.Context) {
 	const dbName, collectionName = "models", "documents"
-	id, exists := ctx.Params.Get("id")
 
-	if !exists {
-		utils.ErrorJSON(errors.New("invalid request: missing param id"), ctx, http.StatusBadRequest)
+	id, ok := getIdParam(ctx)
 
+	if !ok {
 		return
 	}
 
@@ -172,4 +165,106 @@ func DeleteModel(ctx *gin.Context) {
 	responseJSON.Data = dataResponse
 
 	ctx.JSON(http.StatusAccepted, responseJSON)
+}
+
+func ModifyModel(ctx *gin.Context) {
+	var resource models.ModelUpdate
+	const dbName, collectionName = "models", "documents"
+
+	err := decodeRequestBody(ctx, &resource)
+
+	if err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+
+		return
+	}
+
+	filter := bson.M{}
+	updateMap := bson.M{}
+
+	var objectId primitive.ObjectID
+
+	if resource.Id != nil {
+		objectId, err = primitive.ObjectIDFromHex(*resource.Id)
+
+		if err != nil {
+			utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+
+			return
+		}
+
+		filter["_id"] = objectId
+	} else {
+		utils.ErrorJSON(errors.New("missing id field in the request"), ctx, http.StatusBadRequest)
+
+		return
+	}
+
+	if resource.ModelName != nil {
+		updateMap["modelName"] = resource.ModelName
+	}
+
+	if resource.Category != nil {
+		updateMap["modelType"] = resource.Category
+	}
+
+	if resource.Scale != nil {
+		updateMap["scale"] = resource.Scale
+	}
+
+	if resource.Material != nil {
+		updateMap["material"] = resource.Material
+	}
+
+	if resource.Manufacturer != nil {
+		updateMap["manufacturer"] = resource.Manufacturer
+	}
+
+	if resource.Images != nil {
+		updateMap["images"] = resource.Images
+	}
+
+	if resource.Tags != nil {
+		updateMap["tags"] = resource.Tags
+	}
+
+	if resource.BuidingTime != nil {
+		updateMap["buildingTime"] = resource.BuidingTime
+	}
+
+	if resource.Difficulty != nil {
+		updateMap["difficulty"] = resource.Difficulty
+	}
+
+	if resource.ExternalLinks != nil {
+		updateMap["links"] = resource.ExternalLinks
+	}
+
+	if resource.Description != nil {
+		updateMap["description"] = resource.Description
+	}
+
+	resource.UpdatedAt = time.Now()
+
+	res, ok := database.Update(ctx, filter, updateMap, dbName, collectionName)
+
+	sendUpdateResponse(ctx, res, ok, objectId, dbName, collectionName)
+}
+
+func ReplaceModel(ctx *gin.Context) {
+	var replacement models.Model
+	const dbName, collectionName = "models", "documents"
+
+	err := decodeRequestBody(ctx, &replacement)
+
+	if err != nil {
+		utils.ErrorJSON(err, ctx, http.StatusInternalServerError)
+
+		return
+	}
+
+	res, ok := database.Replace(ctx, replacement, dbName, collectionName)
+
+	sendUpdateResponse(ctx, res, ok, replacement.Id, dbName, collectionName)
+
 }
