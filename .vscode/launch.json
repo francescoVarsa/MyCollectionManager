@@ -10,7 +10,8 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}/backend/API/cmd/api/main.go",
-      "cwd": "${workspaceFolder}/backend/API"
+      "cwd": "${workspaceFolder}/backend/API",
+      "args": ["-envFile", "${workspaceFolder}/backend/API/.env"]
     }
   ]
 }

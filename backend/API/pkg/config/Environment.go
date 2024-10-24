@@ -5,8 +5,6 @@ import (
 )
 
 func GetEnv(key string) (string, error) {
-	viper.SetConfigFile(".env")
-
 	err := viper.ReadInConfig()
 
 	if err != nil {
